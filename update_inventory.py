@@ -23,7 +23,8 @@ reader = csv.DictReader(StringIO(csv_content), delimiter="\t")
 
 # Mapping op SKU
 for row in reader:
-    sku = row["product_sku"]
+    sku = row["product_sku"].strip().upper()
+    print(f"Zoeken naar SKU: {sku}")
     new_stock = int(float(row["actual_stock_level"]))
 
     # Zoek variant via SKU
