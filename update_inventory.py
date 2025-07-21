@@ -9,6 +9,8 @@ SHOPIFY_API_VERSION = os.getenv("SHOPIFY_API_VERSION")
 SHOPIFY_LOCATION_ID = os.getenv("SHOPIFY_LOCATION_ID")
 CSV_FILE_URL = os.getenv("CSV_FILE_URL")
 
+print("👉 STORE URL:", SHOPIFY_STORE_URL)
+
 def get_inventory_items():
     """
     Haal alle producten op uit Shopify met bijbehorende inventory item ID's en SKU's.
