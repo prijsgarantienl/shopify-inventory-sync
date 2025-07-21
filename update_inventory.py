@@ -9,139 +9,116 @@ SHOPIFY_API_VERSION = os.getenv("SHOPIFY_API_VERSION")
 SHOPIFY_LOCATION_ID = os.getenv("SHOPIFY_LOCATION_ID")
 CSV_FILE_URL = os.getenv("CSV_FILE_URL")
 
-print("👉 STORE URL:", SHOPIFY_STORE_URL)
-
 def get_inventory_items():
-    """
-    Haal alle producten op uit Shopify met bijbehorende inventory item ID's en SKU's.
-    """
-    url = f"https://{SHOPIFY_STORE_URL}/admin/api/{SHOPIFY_API_VERSION}/graphql.json"
-    headers = {
-        "X-Shopify-Access-Token": SHOPIFY_ACCESS_TOKEN,
-        "Content-Type": "application/json"
-    }
-
-    inventory_map = {}
-    has_next_page = True
-    cursor = None
-
-    while has_next_page:
-        query = """
-        query ($cursor: String) {
-          products(first: 100, after: $cursor) {
-            pageInfo {
-              hasNextPage
-            }
-            edges {
-              cursor
-              node {
-                variants(first: 100) {
-                  edges {
-                    node {
-                      sku
-                      inventoryItem {
-                        id
-                      }
-                    }
+    query = """
+    {
+      products(first: 250) {
+        edges {
+          node {
+            variants(first: 100) {
+              edges {
+                node {
+                  sku
+                  id
+                  inventoryItem {
+                    id
                   }
                 }
               }
             }
           }
         }
-        """
+      }
+    }
+    """
+    response = requests.post(
+        f"{SHOPIFY_STORE_URL}/admin/api/{SHOPIFY_API_VERSION}/graphql.json",
+        headers={
+            "Content-Type": "application/json",
+            "X-Shopify-Access-Token": SHOPIFY_ACCESS_TOKEN
+        },
+        json={"query": query}
+    )
 
-        variables = {"cursor": cursor}
-        response = requests.post(url, headers=headers, json={"query": query, "variables": variables})
-        data = response.json()
+    data = response.json()
+    inventory_items = {}
+    try:
+        for product in data["data"]["products"]["edges"]:
+            for variant in product["node"]["variants"]["edges"]:
+                sku = variant["node"]["sku"]
+                inventory_item_id = variant["node"]["inventoryItem"]["id"]
+                if sku:
+                    inventory_items[sku.strip().upper()] = inventory_item_id
+    except Exception as e:
+        print("Fout bij ophalen van Shopify-inventaris:", e)
+    
+    return inventory_items
 
-        try:
-            for product_edge in data["data"]["products"]["edges"]:
-                cursor = product_edge["cursor"]
-                for variant_edge in product_edge["node"]["variants"]["edges"]:
-                    variant = variant_edge["node"]
-                    sku = (variant["sku"] or "").strip().upper()
-                    inventory_item_id = variant["inventoryItem"]["id"]
-                    if sku:
-                        inventory_map[sku] = inventory_item_id
-        except Exception as e:
-            print("Fout bij het uitlezen van de producten:", e)
-            break
+def update_inventory_level(inventory_item_id, available):
+    mutation = """
+    mutation inventoryAdjustQuantity($input: InventoryAdjustQuantityInput!) {
+      inventoryAdjustQuantity(input: $input) {
+        inventoryLevel {
+          available
+        }
+        userErrors {
+          field
+          message
+        }
+      }
+    }
+    """
+    variables = {
+        "input": {
+            "inventoryItemId": inventory_item_id,
+            "availableDelta": available  # Volledige vervanging werkt niet zonder InventoryLevel ID
+        }
+    }
 
-        has_next_page = data["data"]["products"]["pageInfo"]["hasNextPage"]
+    response = requests.post(
+        f"{SHOPIFY_STORE_URL}/admin/api/{SHOPIFY_API_VERSION}/graphql.json",
+        headers={
+            "Content-Type": "application/json",
+            "X-Shopify-Access-Token": SHOPIFY_ACCESS_TOKEN
+        },
+        json={"query": mutation, "variables": variables}
+    )
 
-    return inventory_map
+    return response.json()
 
-def update_inventory():
-    inventory_map = get_inventory_items()
+def main():
+    print("Start voorraad synchronisatie...")
 
-    print("→ Aantal producten opgehaald uit Shopify:", len(inventory_map))
+    # Haal inventory items op uit Shopify
+    inventory_items = get_inventory_items()
+    print(f"📦 Aantal varianten in Shopify: {len(inventory_items)}")
 
+    # Haal de CSV van de leverancier op
     response = requests.get(CSV_FILE_URL)
-    response.encoding = "utf-8"
-    csv_content = response.text.splitlines()
-    reader = csv.DictReader(csv_content)
-
-    updates = 0
+    response.encoding = 'utf-8'
+    decoded_content = response.text.splitlines()
+    reader = csv.DictReader(decoded_content)
 
     for row in reader:
-        supplier_sku = str(row.get("product_sku", "")).strip().upper()
-        stock_level = int(float(row.get("actual_stock_level", "0")))
+        leverancier_sku = row.get("product_sku", "").strip().upper()
+        try:
+            voorraad = int(float(row.get("actual_stock_level", 0)))
+        except:
+            voorraad = 0
 
-        print(f"CSV uitlezing → SKU: {supplier_sku}, voorraad: {stock_level}")
+        if not leverancier_sku:
+            print(f"⚠️ SKU ontbreekt in rij: {row}")
+            continue
 
-        inventory_item_id = inventory_map.get(supplier_sku)
+        inventory_item_id = inventory_items.get(leverancier_sku)
+
+        print(f"SKU {leverancier_sku} → voorraad: {voorraad}")
 
         if inventory_item_id:
-            mutation_url = f"https://{SHOPIFY_STORE_URL}/admin/api/{SHOPIFY_API_VERSION}/graphql.json"
-            mutation = """
-            mutation inventoryAdjustQuantities($input: InventoryAdjustQuantitiesInput!) {
-              inventoryAdjustQuantities(input: $input) {
-                inventoryAdjustmentGroup {
-                  createdAt
-                  reason
-                }
-                userErrors {
-                  field
-                  message
-                }
-              }
-            }
-            """
-            variables = {
-                "input": {
-                    "reason": "correction",
-                    "name": "Voorraadsynchronisatie",
-                    "changes": [
-                        {
-                            "inventoryItemId": inventory_item_id,
-                            "locationId": f"gid://shopify/Location/{SHOPIFY_LOCATION_ID}",
-                            "availableDelta": stock_level  # LET OP: dit corrigeert relatief!
-                        }
-                    ]
-                }
-            }
-
-            mutation_response = requests.post(
-                mutation_url,
-                headers={
-                    "X-Shopify-Access-Token": SHOPIFY_ACCESS_TOKEN,
-                    "Content-Type": "application/json"
-                },
-                json={"query": mutation, "variables": variables}
-            )
-
-            json_response = mutation_response.json()
-
-            if json_response.get("errors") or json_response.get("data", {}).get("inventoryAdjustQuantities", {}).get("userErrors"):
-                print(f"⚠️ Fout bij updaten van voorraad voor {supplier_sku}: {json_response}")
-            else:
-                print(f"✅ Voorraad aangepast voor {supplier_sku}: {stock_level}")
-                updates += 1
+            result = update_inventory_level(inventory_item_id, voorraad)
+            print(f"✅ Bijgewerkt: {leverancier_sku} → voorraad {voorraad}")
         else:
-            print(f"SKU {supplier_sku} niet gevonden in Shopify")
-
-    print(f"🔄 Sync compleet. Totaal aantal geüpdatete producten: {updates}")
+            print(f"❌ SKU {leverancier_sku} niet gevonden in Shopify")
 
 if __name__ == "__main__":
-    update_inventory()
+    main()
