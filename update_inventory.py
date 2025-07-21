@@ -1,90 +1,56 @@
+import csv
 import os
 import requests
-import csv
-import io
+import shopify
+from io import StringIO
 
-SHOP_URL = os.environ["SHOPIFY_STORE_URL"]
-API_VERSION = os.environ["SHOPIFY_API_VERSION"]
-ACCESS_TOKEN = os.environ["SHOPIFY_ACCESS_TOKEN"]
-LOCATION_ID = os.environ["SHOPIFY_LOCATION_ID"]
-CSV_URL = os.environ["CSV_FILE_URL"]
+# Ophalen van secrets/omgevingsvariabelen
+SHOP_URL = os.getenv("SHOPIFY_STORE_URL")  # bijv. 'd8e0w6-ep.myshopify.com'
+API_VERSION = os.getenv("SHOPIFY_API_VERSION")  # bijv. '2025-07'
+ACCESS_TOKEN = os.getenv("SHOPIFY_ACCESS_TOKEN")
+CSV_FILE_URL = os.getenv("CSV_FILE_URL")
+LOCATION_ID = os.getenv("SHOPIFY_LOCATION_ID")
 
-def download_csv():
-    r = requests.get(CSV_URL)
-    r.raise_for_status()
-    return io.StringIO(r.text)
+# Shopify sessie starten
+shop_url = f"https://{ACCESS_TOKEN}@{SHOP_URL}/admin/api/{API_VERSION}"
+shopify.ShopifyResource.set_site(shop_url)
 
-def get_inventory_item_id(sku):
-    query = {
-        "query": f"""
-        {{
-          productVariants(first: 1, query: "sku:{sku}") {{
-            edges {{
-              node {{
-                inventoryItem {{
-                  id
-                }}
-              }}
-            }}
-          }}
-        }}
-        """
-    }
-    headers = {
-        "X-Shopify-Access-Token": ACCESS_TOKEN,
-        "Content-Type": "application/json"
-    }
-    url = f"https://{SHOP_URL}/admin/api/{API_VERSION}/graphql.json"
-    r = requests.post(url, json=query, headers=headers)
-    r.raise_for_status()
-    data = r.json()
-    try:
-        return data['data']['productVariants']['edges'][0]['node']['inventoryItem']['id']
-    except (IndexError, KeyError):
-        return None
+# CSV ophalen
+response = requests.get(CSV_FILE_URL)
+response.raise_for_status()
+csv_content = response.content.decode("utf-8")
+reader = csv.DictReader(StringIO(csv_content), delimiter="\t")
 
-def set_inventory_quantity(inventory_item_id, quantity):
-    mutation = {
-        "query": f"""
-        mutation {{
-          inventorySetOnHandQuantity(input: {{
-            inventoryItemId: "{inventory_item_id}",
-            locationId: "{LOCATION_ID}",
-            onHandQuantity: {quantity}
-          }}) {{
-            inventoryLevel {{ id available }}
-            userErrors {{ field message }}
-          }}
-        }}
-        """
-    }
-    headers = {
-        "X-Shopify-Access-Token": ACCESS_TOKEN,
-        "Content-Type": "application/json"
-    }
-    url = f"https://{SHOP_URL}/admin/api/{API_VERSION}/graphql.json"
-    r = requests.post(url, json=mutation, headers=headers)
-    r.raise_for_status()
-    return r.json()
+# Mapping op SKU
+for row in reader:
+    sku = row["product_sku"]
+    new_stock = int(float(row["actual_stock_level"]))
 
-def main():
-    csvfile = download_csv()
-    reader = csv.DictReader(csvfile, delimiter=';')
+    # Zoek variant via SKU
+    variants = shopify.Variant.find(query=f"sku:{sku}")
+    if not variants:
+        print(f"SKU {sku} niet gevonden in Shopify.")
+        continue
 
-    for row in reader:
-        sku = row.get("Artikelnummer")
-        try:
-            quantity = int(row.get("VoorraadAantal", 0))
-        except ValueError:
-            quantity = 0
+    for variant in variants:
+        inventory_item_id = variant.inventory_item_id
 
-        print(f"SKU {sku} → voorraad: {quantity}")
-        inventory_item_id = get_inventory_item_id(sku)
-        if inventory_item_id:
-            result = set_inventory_quantity(inventory_item_id, quantity)
-            print(result)
+        # Update voorraad via InventoryLevel
+        payload = {
+            "location_id": LOCATION_ID,
+            "inventory_item_id": inventory_item_id,
+            "available": new_stock
+        }
+
+        update_url = f"https://{SHOP_URL}/admin/api/{API_VERSION}/inventory_levels/set.json"
+        headers = {
+            "Content-Type": "application/json",
+            "X-Shopify-Access-Token": ACCESS_TOKEN
+        }
+
+        res = requests.post(update_url, headers=headers, json=payload)
+
+        if res.status_code == 200:
+            print(f"Voorraad voor SKU {sku} succesvol bijgewerkt naar {new_stock}.")
         else:
-            print(f"SKU {sku} niet gevonden in Shopify")
-
-if __name__ == "__main__":
-    main()
+            print(f"Fout bij bijwerken SKU {sku}: {res.status_code} - {res.text}")
