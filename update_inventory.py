@@ -21,7 +21,9 @@ def read_csv_data(csv_text, key_column):
     for row in reader:
         key = row.get(key_column)
         if key:
-            data[key.strip()] = row
+            # Normaliseer: strip, lower, geen spaties
+            norm_key = key.strip().replace(" ", "").lower()
+            data[norm_key] = row
     return data
 
 def build_sku_inventory_map(supplier_data):
@@ -32,7 +34,7 @@ def build_sku_inventory_map(supplier_data):
             voorraad = int(float(voorraad_str))
         except ValueError:
             voorraad = 0
-        sku_inventory[sku.strip()] = voorraad
+        sku_inventory[sku] = voorraad
     return sku_inventory
 
 def update_inventory_level(inventory_item_id, available):
@@ -58,26 +60,38 @@ def main():
     supplier_csv = fetch_csv(CSV_FILE_URL)
     shopify_csv = open("products_export_1.csv", "r", encoding="utf-8").read()
 
-    # Lees data
+    # Lees data (genormaliseerde keys)
     supplier_data = read_csv_data(supplier_csv, key_column="Product SKU")
     shopify_data = read_csv_data(shopify_csv, key_column="Variant SKU")
 
-    # Bouw mapping van Variant SKU → inventory_item_id
+    # Bouw mapping van Variant SKU → inventory_item_id (genormaliseerd)
     variant_inventory_map = {
-        sku.strip(): row["Variant Inventory Item ID"].strip()
+        sku.strip().replace(" ", "").lower(): row["Variant Inventory Item ID"].strip()
         for sku, row in shopify_data.items()
         if sku and row.get("Variant Inventory Item ID")
     }
 
     # Verwerk voorraadupdates
     sku_inventory_map = build_sku_inventory_map(supplier_data)
+    not_found_skus = []
+    no_inventory_id = []
     for variant_sku, inventory_item_id in variant_inventory_map.items():
-        voorraad = sku_inventory_map.get(variant_sku, 0)
+        voorraad = sku_inventory_map.get(variant_sku, None)
+        if voorraad is None:
+            not_found_skus.append(variant_sku)
+            print(f"❓ Geen voorraad gevonden voor SKU: {variant_sku}")
+            continue
+        if not inventory_item_id:
+            no_inventory_id.append(variant_sku)
+            print(f"❓ Geen inventory_item_id voor SKU: {variant_sku}")
+            continue
         print(f"SKU {variant_sku} → voorraad: {voorraad}")
         success = update_inventory_level(inventory_item_id, voorraad)
         if not success:
             print(f"❌ Mislukt voor SKU {variant_sku}")
 
+    print(f"Niet gevonden SKU's in leverancier: {not_found_skus}")
+    print(f"SKU's zonder inventory_item_id: {no_inventory_id}")
     print("✅ Synchronisatie voltooid.")
 
 if __name__ == "__main__":
