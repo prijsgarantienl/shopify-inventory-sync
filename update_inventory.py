@@ -29,7 +29,7 @@ def read_csv_data(csv_text, key_column):
 def build_sku_inventory_map(supplier_data):
     sku_inventory = {}
     for sku, row in supplier_data.items():
-        voorraad_str = row.get("Voorraad", "").strip()
+        voorraad_str = row.get("actual_stock_level", "").strip()
         try:
             voorraad = int(float(voorraad_str))
         except ValueError:
@@ -61,7 +61,7 @@ def main():
     shopify_csv = open("products_export_1.csv", "r", encoding="utf-8").read()
 
     # Lees data (genormaliseerde keys)
-    supplier_data = read_csv_data(supplier_csv, key_column="Product SKU")
+    supplier_data = read_csv_data(supplier_csv, key_column="product_sku")
     shopify_data = read_csv_data(shopify_csv, key_column="Variant SKU")
 
     # Bouw mapping van Variant SKU → inventory_item_id (genormaliseerd)
