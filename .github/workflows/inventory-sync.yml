@@ -8,6 +8,8 @@ on:
       - 'inventory_mapping.csv'
       - '.github/workflows/inventory-sync.yml'
   workflow_dispatch:
+  schedule:
+    - cron: '0 4-15 * * *'  # Elke 60 min tussen 04:00–15:00 UTC (06:00–17:00 NL)
 
 jobs:
   sync:
