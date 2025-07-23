@@ -71,7 +71,7 @@ def update_inventory(inventory_item_id, new_qty):
         "variables": {
             "input": {
                 "name": "available",
-                "reason": "GitHub sync",
+                "reason": "correction",
                 "ignoreCompareQuantity": True,
                 "quantities": [
                     {
