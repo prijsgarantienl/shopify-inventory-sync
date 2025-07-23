@@ -17,13 +17,22 @@ def fetch_csv(url):
 
 def read_csv_data(csv_text, key_column):
     reader = csv.DictReader(StringIO(csv_text), delimiter=",")
+    
+    # Debug: toon alle kolomnamen
+    print(f"📄 Kolommen in CSV: {reader.fieldnames}")
+    
+    if key_column not in reader.fieldnames:
+        print(f"❌ Waarschuwing: kolom '{key_column}' niet gevonden in CSV.")
+        return {}
+    
     data = {}
     for row in reader:
         key = row.get(key_column)
         if key:
-            # Normaliseer: strip, lower, geen spaties
             norm_key = key.strip().replace(" ", "").lower()
             data[norm_key] = row
+        else:
+            print(f"⚠️ Lege of ongeldige key in rij: {row}")
     return data
 
 def build_sku_inventory_map(supplier_data):
@@ -63,6 +72,10 @@ def main():
     # Lees data (genormaliseerde keys)
     supplier_data = read_csv_data(supplier_csv, key_column="product_sku")
     shopify_data = read_csv_data(shopify_csv, key_column="Variant SKU")
+
+    if not supplier_data or not shopify_data:
+        print("❌ Geen geldige data ingelezen. Stoppen.")
+        return
 
     # Bouw mapping van Variant SKU → inventory_item_id (genormaliseerd)
     variant_inventory_map = {
