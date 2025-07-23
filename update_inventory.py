@@ -23,21 +23,17 @@ def fetch_csv(url):
 
 def read_csv_data(csv_text, key_column):
     reader = csv.DictReader(StringIO(csv_text), delimiter=",")
-    
-    # Debug: toon alle kolomnamen
     print(f"📄 Kolommen in CSV: {reader.fieldnames}")
-    
+
     if key_column not in reader.fieldnames:
         print(f"❌ Waarschuwing: kolom '{key_column}' niet gevonden in CSV.")
         return {}
-    
+
     data = {}
     for row in reader:
-        print(repr(row.get("product_sku")))  # <-- voeg toe
         key = row.get(key_column)
         if key:
-            norm_key = key.strip().replace(" ", "").lower()
-            data[norm_key] = row
+            data[key.strip()] = row
         else:
             print(f"⚠️ Lege of ongeldige key in rij: {row}")
     return data
@@ -50,7 +46,7 @@ def build_sku_inventory_map(supplier_data):
             voorraad = int(float(voorraad_str))
         except ValueError:
             voorraad = 0
-        sku_inventory[sku] = voorraad
+        sku_inventory[sku.strip()] = voorraad
     return sku_inventory
 
 def update_inventory_level(inventory_item_id, available):
@@ -76,7 +72,7 @@ def main():
     supplier_csv = fetch_csv(CSV_FILE_URL)
     shopify_csv = open("products_export_1.csv", "r", encoding="utf-8").read()
 
-    # Lees data (genormaliseerde keys)
+    # Lees data
     supplier_data = read_csv_data(supplier_csv, key_column="product_sku")
     shopify_data = read_csv_data(shopify_csv, key_column="Variant SKU")
 
@@ -84,9 +80,9 @@ def main():
         print("❌ Geen geldige data ingelezen. Stoppen.")
         return
 
-    # Bouw mapping van Variant SKU → inventory_item_id (genormaliseerd)
+    # Mapping Variant SKU → inventory_item_id
     variant_inventory_map = {
-        sku.strip().replace(" ", "").lower(): row["Variant Inventory Item ID"].strip()
+        sku.strip(): row["Variant Inventory Item ID"].strip()
         for sku, row in shopify_data.items()
         if sku and row.get("Variant Inventory Item ID")
     }
@@ -95,6 +91,7 @@ def main():
     sku_inventory_map = build_sku_inventory_map(supplier_data)
     not_found_skus = []
     no_inventory_id = []
+
     for variant_sku, inventory_item_id in variant_inventory_map.items():
         voorraad = sku_inventory_map.get(variant_sku, None)
         if voorraad is None:
