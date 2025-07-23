@@ -4,6 +4,7 @@ on:
   push:
     paths:
       - 'update_inventory.py'
+      - 'export_inventory_mapping.py'
       - 'products_export_1.csv'
       - 'inventory_mapping.csv'
       - '.github/workflows/inventory-sync.yml'
@@ -26,7 +27,11 @@ jobs:
           python -m pip install --upgrade pip
           pip install requests
 
-      - name: Export inventory mapping (eenmalig)
+      - name: Exporteer inventory mapping
+        env:
+          SHOPIFY_STORE_URL: ${{ secrets.SHOPIFY_STORE_URL }}
+          SHOPIFY_ACCESS_TOKEN: ${{ secrets.SHOPIFY_ACCESS_TOKEN }}
+          SHOPIFY_API_VERSION: ${{ secrets.SHOPIFY_API_VERSION }}
         run: |
           python export_inventory_mapping.py
 
