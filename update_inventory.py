@@ -33,6 +33,7 @@ def read_csv_data(csv_text, key_column):
     
     data = {}
     for row in reader:
+        print(repr(row.get("product_sku")))  # <-- voeg toe
         key = row.get(key_column)
         if key:
             norm_key = key.strip().replace(" ", "").lower()
