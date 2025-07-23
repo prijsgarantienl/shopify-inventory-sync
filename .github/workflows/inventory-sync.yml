@@ -5,6 +5,7 @@ on:
     paths:
       - 'update_inventory.py'
       - 'products_export_1.csv'
+      - 'inventory_mapping.csv'
       - '.github/workflows/inventory-sync.yml'
   workflow_dispatch:
 
@@ -24,6 +25,10 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install requests
+
+      - name: Export inventory mapping (eenmalig)
+        run: |
+          python export_inventory_mapping.py
 
       - name: Run inventory sync
         id: sync
@@ -45,9 +50,10 @@ jobs:
           script: |
             const fs = require('fs');
             const log = fs.readFileSync('sync.log', 'utf8');
-            await github.issues.create({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
+            const [owner, repo] = process.env.GITHUB_REPOSITORY.split('/');
+            await github.rest.issues.create({
+              owner,
+              repo,
               title: '❌ Shopify voorraad-sync gefaald',
               body: `De voorraad-sync workflow is gefaald.\n\n**Log:**\n\n\`\`\`\n${log.substring(0, 6000)}\n\`\`\``
             });
