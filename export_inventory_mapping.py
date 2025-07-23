@@ -2,6 +2,7 @@ import os
 import csv
 import requests
 
+# Shopify omgevingsvariabelen (worden gezet in GitHub Actions)
 SHOPIFY_STORE_URL = os.getenv("SHOPIFY_STORE_URL")
 SHOPIFY_ACCESS_TOKEN = os.getenv("SHOPIFY_ACCESS_TOKEN")
 SHOPIFY_API_VERSION = os.getenv("SHOPIFY_API_VERSION")
@@ -42,6 +43,7 @@ def fetch_all_variants():
                 "Content-Type": "application/json"
             }
         )
+        response.raise_for_status()
         data = response.json()["data"]["productVariants"]
         for edge in data["edges"]:
             node = edge["node"]
@@ -56,7 +58,7 @@ def fetch_all_variants():
 def save_to_csv(data, filename="inventory_mapping.csv"):
     with open(filename, mode="w", newline="", encoding="utf-8") as file:
         writer = csv.writer(file)
-        writer.writerow(["sku", "inventory_item_id"])
+        writer.writerow(["Variant SKU", "Inventory Item ID"])  # <-- belangrijk
         writer.writerows(data)
 
 if __name__ == "__main__":
