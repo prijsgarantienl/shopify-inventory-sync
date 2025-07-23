@@ -49,24 +49,40 @@ def read_inventory_mapping(path="inventory_mapping.csv"):
 
 def update_inventory(inventory_item_id, new_qty):
     mutation = {
-        "query": f"""
-        mutation {{
-          inventorySetQuantity(input: {{
-            inventoryItemId: "{inventory_item_id}",
-            availableQuantity: {new_qty},
-            locationId: "{SHOPIFY_LOCATION_ID}"
-          }}) {{
-            inventoryLevel {{
-              available
-            }}
-            userErrors {{
+        "query": '''
+        mutation InventorySetQuantities($input: InventorySetQuantitiesInput!) {
+          inventorySetQuantities(input: $input) {
+            inventoryAdjustmentGroup {
+              createdAt
+              reason
+              changes {
+                name
+                delta
+              }
+            }
+            userErrors {
               field
               message
-            }}
-          }}
-        }}
-        """
+            }
+          }
+        }
+        ''',
+        "variables": {
+            "input": {
+                "name": "available",
+                "reason": "GitHub sync",
+                "ignoreCompareQuantity": True,
+                "quantities": [
+                    {
+                        "inventoryItemId": inventory_item_id,
+                        "locationId": SHOPIFY_LOCATION_ID,
+                        "quantity": new_qty
+                    }
+                ]
+            }
+        }
     }
+
     response = requests.post(
         f"https://{SHOPIFY_STORE_URL}/admin/api/{SHOPIFY_API_VERSION}/graphql.json",
         json=mutation,
@@ -112,13 +128,9 @@ for i in range(0, len(skus_to_update), BATCH_SIZE):
         result = update_inventory(inventory_item_id, voorraad)
         if "errors" in result:
             print(f"❌ API fout bij {sku}: {result['errors']}")
-        elif result.get("data", {}).get("inventorySetQuantity", {}).get("userErrors"):
-            user_errors = result["data"]["inventorySetQuantity"]["userErrors"]
+        elif result.get("data", {}).get("inventorySetQuantities", {}).get("userErrors"):
+            user_errors = result["data"]["inventorySetQuantities"]["userErrors"]
             print(f"⚠️ Fout bij {sku}: {user_errors}")
-            # Detect throttle melding in userErrors
-            if any("throttle" in (err.get("message") or "").lower() for err in user_errors):
-                print("⏳ Shopify throttle gedetecteerd. 5 seconden pauze...")
-                time.sleep(5)
         else:
             print(f"✅ {sku}: voorraad ingesteld op {voorraad}")
 
