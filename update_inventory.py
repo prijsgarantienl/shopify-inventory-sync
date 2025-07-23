@@ -10,6 +10,12 @@ SHOPIFY_API_VERSION = os.getenv("SHOPIFY_API_VERSION")
 SHOPIFY_LOCATION_ID = os.getenv("SHOPIFY_LOCATION_ID")
 CSV_FILE_URL = os.getenv("CSV_FILE_URL")
 
+print("✅ Script gestart")
+
+# Check of secrets goed binnenkomen
+print("SHOPIFY_STORE_URL:", SHOPIFY_STORE_URL or "❌ NIET GEZET")
+print("CSV_FILE_URL:", CSV_FILE_URL or "❌ NIET GEZET")
+
 def fetch_csv(url):
     response = requests.get(url)
     response.raise_for_status()
