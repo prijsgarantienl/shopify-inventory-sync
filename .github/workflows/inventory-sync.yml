@@ -34,7 +34,8 @@ jobs:
           SHOPIFY_LOCATION_ID: ${{ secrets.SHOPIFY_LOCATION_ID }}
           CSV_FILE_URL: ${{ secrets.CSV_FILE_URL }}
         run: |
-          python update_inventory.py > sync.log 2>&1 || (cat sync.log && exit 1)
+          python update_inventory.py > sync.log 2>&1
+          cat sync.log
 
       - name: Create issue on failure
         if: failure()
