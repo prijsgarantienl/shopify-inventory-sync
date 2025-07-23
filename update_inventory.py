@@ -11,6 +11,7 @@ SHOPIFY_API_VERSION = os.getenv("SHOPIFY_API_VERSION")
 SHOPIFY_LOCATION_ID = os.getenv("SHOPIFY_LOCATION_ID")
 CSV_FILE_URL = os.getenv("CSV_FILE_URL")
 
+print("🚀 RUNNING update_inventory.py with inventorySetQuantities mutation")
 print("✅ Script gestart")
 print("SHOPIFY_STORE_URL:", SHOPIFY_STORE_URL or "❌ NIET GEZET")
 print("CSV_FILE_URL:", CSV_FILE_URL or "❌ NIET GEZET")
