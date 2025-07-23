@@ -18,7 +18,6 @@ print("🔄 Start voorraad-synchronisatie...")
 
 # Configuratie
 BATCH_SIZE = 75
-SLEEP_TIME = 20  # om rate limiting te voorkomen
 
 # --- Functies ---
 def fetch_csv(url):
@@ -113,10 +112,14 @@ for i in range(0, len(skus_to_update), BATCH_SIZE):
         result = update_inventory(inventory_item_id, voorraad)
         if "errors" in result:
             print(f"❌ API fout bij {sku}: {result['errors']}")
+        elif result.get("data", {}).get("inventorySetQuantity", {}).get("userErrors"):
+            user_errors = result["data"]["inventorySetQuantity"]["userErrors"]
+            print(f"⚠️ Fout bij {sku}: {user_errors}")
+            # Detect throttle melding in userErrors
+            if any("throttle" in (err.get("message") or "").lower() for err in user_errors):
+                print("⏳ Shopify throttle gedetecteerd. 5 seconden pauze...")
+                time.sleep(5)
         else:
             print(f"✅ {sku}: voorraad ingesteld op {voorraad}")
-
-    print(f"⏳ {SLEEP_TIME} seconden pauze om limieten te respecteren...")
-    time.sleep(SLEEP_TIME)
 
 print("🎉 Synchronisatie voltooid.")
